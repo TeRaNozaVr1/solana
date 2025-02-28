@@ -66,16 +66,17 @@
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
+        window.onload = function () {
             const solanaWeb3 = window.solanaWeb3;
             const splToken = window.splToken;
             const SPL_TOKEN_PRICE = 0.00048;
             let wallet = null;
             let connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
-            const USDT_MINT = new solanaWeb3.PublicKey("INSERT_USDT_MINT_ADDRESS");
-            const USDC_MINT = new solanaWeb3.PublicKey("INSERT_USDC_MINT_ADDRESS");
-            const SPL_TOKEN_MINT = new solanaWeb3.PublicKey("INSERT_SPL_TOKEN_MINT_ADDRESS");
-            const DESTINATION_WALLET = new solanaWeb3.PublicKey("INSERT_DESTINATION_WALLET");
+            
+            const USDT_MINT = new solanaWeb3.PublicKey("YOUR_USDT_MINT_ADDRESS");
+            const USDC_MINT = new solanaWeb3.PublicKey("YOUR_USDC_MINT_ADDRESS");
+            const SPL_TOKEN_MINT = new solanaWeb3.PublicKey("YOUR_SPL_TOKEN_MINT_ADDRESS");
+            const DESTINATION_WALLET = new solanaWeb3.PublicKey("YOUR_DESTINATION_WALLET");
 
             window.connectWallet = async function(type) {
                 if (type === 'phantom' && window.solana) {
@@ -129,9 +130,7 @@
                     document.getElementById("result").innerText = `Transaction confirmed: ${signature}`;
                 }
             }
-        });
+        }
     </script>
 </body>
 </html>
-
-
