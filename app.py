@@ -1,88 +1,88 @@
-from fastapi import FastAPI, HTTPException
-import time
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from solana.rpc.api import Client
 from solana.transaction import Transaction
 from solana.publickey import PublicKey
 from solana.system_program import TransferParams, transfer
-from solana.rpc.types import TxOpts
 from solders.keypair import Keypair
-from spl.token.instructions import transfer_checked, get_associated_token_address
-from spl.token.constants import TOKEN_PROGRAM_ID
-import base58
+from solders.message import Message
+import base64
 import os
 
-# ------------------- НАЛАШТУВАННЯ -------------------
+app = Flask(__name__)
+CORS(app)
+
+# Solana Mainnet API
 SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
-TOKEN_RECEIVER = "4ofLfgCmaJYC233vTGv78WFD4AfezzcMiViu26dF3cVU"  # Гаманець для отримання платежів
-SPL_TOKEN_MINT = "3EwV6VTHYHrkrZ3UJcRRAxnuHiaeb8EntqX85Khj98Zo"  # Адреса SPL-токена
-SPL_RATE = 0.00048  # Обмінний курс
+solana_client = Client(SOLANA_RPC_URL)
 
-# Завантаження приватного ключа для підпису транзакцій
-PRIVATE_KEY_BASE58 = os.getenv("PRIVATE_KEY")  # Завантажуємо з .env або Render
-PRIVATE_KEY_BYTES = base58.b58decode(PRIVATE_KEY_BASE58)
-TOKEN_SENDER_KEYPAIR = Keypair.from_bytes(PRIVATE_KEY_BYTES)
+# Гаманець, на який користувачі будуть надсилати токени
+RECEIVING_WALLET = "4ofLfgCmaJYC233vTGv78WFD4AfezzcMiViu26dF3cVU"
 
-client = Client(SOLANA_RPC_URL)
-app = FastAPI()
+# Завантаження секретного ключа сервісного гаманця
+SERVICE_WALLET_SECRET = os.getenv("SERVICE_WALLET_SECRET")  # Змінна середовища
+service_wallet = Keypair.from_base58_string(SERVICE_WALLET_SECRET)
 
-# ------------------- ФУНКЦІЇ -------------------
-def check_transaction(tx_signature):
-    """Перевіряє, чи транзакція була підтверджена."""
-    for _ in range(10):  # Чекати 20 сек (10 спроб по 2 сек)
-        tx_info = client.get_transaction(tx_signature, commitment="confirmed")
-        if tx_info["result"]:
-            return tx_info["result"]
-        time.sleep(2)
-    return None
 
-def send_spl_tokens(receiver_wallet, amount):
-    """Відправка SPL-токенів після підтвердження платежу."""
-    sender_wallet = TOKEN_SENDER_KEYPAIR.public_key
-    receiver_wallet = PublicKey(receiver_wallet)
-    mint_address = PublicKey(SPL_TOKEN_MINT)
+@app.route("/connect_wallet", methods=["POST"])
+def connect_wallet():
+    """Підключення гаманця користувача"""
+    data = request.json
+    wallet_address = data.get("wallet")
+    wallet_type = data.get("type")
 
-    # Отримуємо ATA (Associated Token Account)
-    receiver_ata = get_associated_token_address(receiver_wallet, mint_address)
-    
-    # Створюємо транзакцію
-    transaction = Transaction()
-    transaction.add(
-        transfer_checked(
-            source=sender_wallet,
-            dest=receiver_ata,
-            owner=sender_wallet,
-            mint=mint_address,
-            amount=int(amount * (10 ** 6)),  # Кількість токенів (з урахуванням десяткових)
-            decimals=6,  # Десяткові для SPL
-            program_id=TOKEN_PROGRAM_ID
+    if not wallet_address:
+        return jsonify({"error": "Wallet address required"}), 400
+
+    return jsonify({"success": True, "wallet": wallet_address, "type": wallet_type})
+
+
+@app.route("/exchange", methods=["POST"])
+def exchange_tokens():
+    """Обмін SPL-токенів на USDT/USDC"""
+    data = request.json
+    user_wallet = data.get("wallet")
+    amount = float(data.get("amount"))
+    token_type = data.get("token_type")
+
+    if not user_wallet or amount <= 0:
+        return jsonify({"error": "Invalid request"}), 400
+
+    if token_type not in ["USDT", "USDC"]:
+        return jsonify({"error": "Only USDT and USDC supported"}), 400
+
+    try:
+        # Підготовка транзакції
+        tx = Transaction().add(
+            transfer(
+                TransferParams(
+                    from_pubkey=service_wallet.pubkey(),
+                    to_pubkey=PublicKey(user_wallet),
+                    lamports=int(amount * 1_000_000)  # 1 USDT = 1_000_000 lamports
+                )
+            )
         )
-    )
 
-    # Відправляємо транзакцію
-    tx_signature = client.send_transaction(transaction, TOKEN_SENDER_KEYPAIR, opts=TxOpts(skip_preflight=True))
-    return tx_signature
+        # Підпис транзакції
+        tx.sign(service_wallet)
 
-# ------------------- API -------------------
-@app.get("/check_payment/{tx_signature}")
-async def check_payment(tx_signature: str):
-    """Перевіряє оплату і видає SPL-токени."""
-    tx_data = check_transaction(tx_signature)
-    if not tx_data:
-        raise HTTPException(status_code=400, detail="Транзакція не знайдена або не підтверджена.")
+        # Відправка транзакції
+        tx_sig = solana_client.send_transaction(tx)
 
-    sender = tx_data["transaction"]["message"]["accountKeys"][0]
-    amount = tx_data["meta"]["postBalances"][0] - tx_data["meta"]["preBalances"][0]
+        return jsonify({"success": True, "txid": str(tx_sig)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Конвертація в SPL-токени
-    spl_amount = amount * SPL_RATE
 
-    # Відправка SPL-токенів
-    spl_tx = send_spl_tokens(sender, spl_amount)
+@app.route("/check_transaction/<txid>", methods=["GET"])
+def check_transaction(txid):
+    """Перевірка статусу транзакції"""
+    try:
+        result = solana_client.get_transaction(txid)
+        return jsonify({"status": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    return {
-        "status": "success",
-        "sender": sender,
-        "amount_received": amount,
-        "spl_sent": spl_amount,
-        "spl_tx_signature": spl_tx
-    }
+
+if __name__ == "__main__":
+    app.run(debug=True)
