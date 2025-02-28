@@ -4,3 +4,4 @@ uvicorn
 solana
 requests
 flask
+flask_cors
