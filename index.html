@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solana Token Exchange Widget</title>
+  <script src="https://unpkg.com/@solana/web3.js@1.37.0/dist/web3.min.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    
+    h1 {
+      font-size: 24px;
+      color: #333;
+    }
+
+    .container {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      width: 300px;
+    }
+
+    #connectButton,
+    #exchangeButton {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      width: 100%;
+      margin: 10px 0;
+      transition: background-color 0.3s;
+    }
+
+    #connectButton:hover,
+    #exchangeButton:hover {
+      background-color: #45a049;
+    }
+
+    #status,
+    #result {
+      font-size: 14px;
+      color: #555;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        width: 90%;
+        padding: 15px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      #connectButton,
+      #exchangeButton {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Solana Token Exchange</h1>
+    
+    <button id="connectButton">Connect Wallet</button>
+    <div id="status"></div>
+    
+    <button id="exchangeButton" style="display:none;">Exchange Tokens</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const { Connection, PublicKey, Keypair, Transaction, SystemProgram } = window.solanaWeb3;
+    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+    let wallet;
+    
+    const connectButton = document.getElementById("connectButton");
+    const exchangeButton = document.getElementById("exchangeButton");
+    const statusDiv = document.getElementById("status");
+    const resultDiv = document.getElementById("result");
+
+    connectButton.onclick = async () => {
+      // Підключення до гаманця
+      if (window.solana && window.solana.isPhantom) {
+        try {
+          await window.solana.connect();
+          wallet = window.solana;
+          connectButton.style.display = "none";
+          exchangeButton.style.display = "inline-block";
+          statusDiv.textContent = `Connected to ${wallet.publicKey.toString()}`;
+        } catch (error) {
+          console.error(error);
+          statusDiv.textContent = 'Connection failed';
+        }
+      } else {
+        statusDiv.textContent = "Please install Phantom Wallet!";
+      }
+    };
+
+    exchangeButton.onclick = async () => {
+      // Логіка для обміну токенів
+      try {
+        const transaction = new Transaction();
+        
+        // Створення транзакції для обміну
+        // Напишемо обмінні умови на основі ціни токена
+        const amountToSend = 1000; // обміняти на 1000 USDT/USDC
+        const tokenPrice = 0.00048; // Ціна одного токена
+
+        // Створюємо умови для транзакції
+        const tokenProgramId = new PublicKey("SPL_Token_Program_Address"); // Тут має бути правильна адреса SPL токену
+        const userTokenAccount = await getAssociatedTokenAddress(wallet.publicKey, tokenProgramId);
+
+        // Додати трансфер токенів
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: wallet.publicKey,
+            toPubkey: userTokenAccount,
+            lamports: amountToSend * tokenPrice * 1000000000 // Переведення в лампорт (1 токен = 1 000 000 000 лампортів)
+          })
+        );
+        
+        // Підтвердження транзакції
+        const signature = await wallet.sendTransaction(transaction, connection);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        resultDiv.textContent = `Transaction successful! Signature: ${signature}`;
+      } catch (error) {
+        console.error(error);
+        resultDiv.textContent = "Transaction failed!";
+      }
+    };
+
+    // Функція для отримання Associated Token Address
+    async function getAssociatedTokenAddress(walletPublicKey, tokenProgramId) {
+      const associatedAddress = await PublicKey.findProgramAddress(
+        [walletPublicKey.toBuffer(), tokenProgramId.toBuffer()],
+        tokenProgramId
+      );
+      return associatedAddress[0];
+    }
+  </script>
+</body>
+</html>
+
