@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Swap Widget</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.7.3/web3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.75.0/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/dist/index.iife.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.7.3/web3.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.75.0/lib/index.iife.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/dist/index.iife.min.js" defer></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -66,69 +66,72 @@
     </div>
 
     <script>
-        const solanaWeb3 = window.solanaWeb3;
-        const splToken = window.splToken;
-        const SPL_TOKEN_PRICE = 0.00048;
-        let wallet = null;
-        let connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
-        const USDT_MINT = new solanaWeb3.PublicKey("INSERT_USDT_MINT_ADDRESS");
-        const USDC_MINT = new solanaWeb3.PublicKey("INSERT_USDC_MINT_ADDRESS");
-        const SPL_TOKEN_MINT = new solanaWeb3.PublicKey("INSERT_SPL_TOKEN_MINT_ADDRESS");
-        const DESTINATION_WALLET = new solanaWeb3.PublicKey("INSERT_DESTINATION_WALLET");
-        
-        async function connectWallet(type) {
-            if (type === 'phantom' && window.solana) {
-                wallet = window.solana;
-            } else if (type === 'solflare' && window.solflare) {
-                wallet = window.solflare;
-            } else {
-                alert("Wallet not found");
-                return;
+        document.addEventListener("DOMContentLoaded", () => {
+            const solanaWeb3 = window.solanaWeb3;
+            const splToken = window.splToken;
+            const SPL_TOKEN_PRICE = 0.00048;
+            let wallet = null;
+            let connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
+            const USDT_MINT = new solanaWeb3.PublicKey("INSERT_USDT_MINT_ADDRESS");
+            const USDC_MINT = new solanaWeb3.PublicKey("INSERT_USDC_MINT_ADDRESS");
+            const SPL_TOKEN_MINT = new solanaWeb3.PublicKey("INSERT_SPL_TOKEN_MINT_ADDRESS");
+            const DESTINATION_WALLET = new solanaWeb3.PublicKey("INSERT_DESTINATION_WALLET");
+
+            window.connectWallet = async function(type) {
+                if (type === 'phantom' && window.solana) {
+                    wallet = window.solana;
+                } else if (type === 'solflare' && window.solflare) {
+                    wallet = window.solflare;
+                } else {
+                    alert("Wallet not found");
+                    return;
+                }
+                await wallet.connect();
+                document.getElementById("wallet-address").innerText = "Connected: " + wallet.publicKey.toString();
             }
-            await wallet.connect();
-            document.getElementById("wallet-address").innerText = "Connected: " + wallet.publicKey.toString();
-        }
-        
-        async function swapTokens() {
-            if (!wallet) {
-                alert("Connect wallet first");
-                return;
+
+            window.swapTokens = async function() {
+                if (!wallet) {
+                    alert("Connect wallet first");
+                    return;
+                }
+                let amount = parseFloat(document.getElementById("amount").value);
+                if (isNaN(amount) || amount <= 0) {
+                    alert("Enter a valid amount");
+                    return;
+                }
+                let tokensToReceive = amount / SPL_TOKEN_PRICE;
+
+                let transaction = new solanaWeb3.Transaction();
+                let transferInstruction = solanaWeb3.SystemProgram.transfer({
+                    fromPubkey: wallet.publicKey,
+                    toPubkey: DESTINATION_WALLET,
+                    lamports: solanaWeb3.LAMPORTS_PER_SOL * amount
+                });
+                transaction.add(transferInstruction);
+
+                let { blockhash } = await connection.getRecentBlockhash();
+                transaction.recentBlockhash = blockhash;
+                transaction.feePayer = wallet.publicKey;
+
+                let signedTransaction = await wallet.signTransaction(transaction);
+                let signature = await connection.sendRawTransaction(signedTransaction.serialize());
+
+                document.getElementById("result").innerText = `Transaction sent: ${signature}`;
+                await confirmTransaction(signature);
             }
-            let amount = parseFloat(document.getElementById("amount").value);
-            if (isNaN(amount) || amount <= 0) {
-                alert("Enter a valid amount");
-                return;
+
+            async function confirmTransaction(signature) {
+                let status = await connection.confirmTransaction(signature, 'finalized');
+                if (status.value.err) {
+                    document.getElementById("result").innerText = `Transaction failed: ${status.value.err}`;
+                } else {
+                    document.getElementById("result").innerText = `Transaction confirmed: ${signature}`;
+                }
             }
-            let tokensToReceive = amount / SPL_TOKEN_PRICE;
-            
-            let transaction = new solanaWeb3.Transaction();
-            let transferInstruction = solanaWeb3.SystemProgram.transfer({
-                fromPubkey: wallet.publicKey,
-                toPubkey: DESTINATION_WALLET,
-                lamports: solanaWeb3.LAMPORTS_PER_SOL * amount
-            });
-            transaction.add(transferInstruction);
-            
-            let { blockhash } = await connection.getRecentBlockhash();
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = wallet.publicKey;
-            
-            let signedTransaction = await wallet.signTransaction(transaction);
-            let signature = await connection.sendRawTransaction(signedTransaction.serialize());
-            
-            document.getElementById("result").innerText = `Transaction sent: ${signature}`;
-            await confirmTransaction(signature);
-        }
-        
-        async function confirmTransaction(signature) {
-            let status = await connection.confirmTransaction(signature, 'finalized');
-            if (status.value.err) {
-                document.getElementById("result").innerText = `Transaction failed: ${status.value.err}`;
-            } else {
-                document.getElementById("result").innerText = `Transaction confirmed: ${signature}`;
-            }
-        }
+        });
     </script>
 </body>
 </html>
+
 
