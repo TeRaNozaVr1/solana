@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Swap Widget</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.7.3/web3.min.js"></script>
-    <script src="https://unpkg.com/@solana/web3.js"></script>
-    <script src="https://unpkg.com/@solana/spl-token"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.75.0/lib/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@latest/dist/index.iife.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -66,10 +66,11 @@
     </div>
 
     <script>
-        let provider = null;
+        const solanaWeb3 = window.solanaWeb3;
+        const splToken = window.splToken;
+        const SPL_TOKEN_PRICE = 0.00048;
         let wallet = null;
         let connection = new solanaWeb3.Connection("https://api.mainnet-beta.solana.com");
-        const SPL_TOKEN_PRICE = 0.00048;
         const USDT_MINT = new solanaWeb3.PublicKey("INSERT_USDT_MINT_ADDRESS");
         const USDC_MINT = new solanaWeb3.PublicKey("INSERT_USDC_MINT_ADDRESS");
         const SPL_TOKEN_MINT = new solanaWeb3.PublicKey("INSERT_SPL_TOKEN_MINT_ADDRESS");
@@ -101,9 +102,6 @@
             let tokensToReceive = amount / SPL_TOKEN_PRICE;
             
             let transaction = new solanaWeb3.Transaction();
-            let sourceAccount = await getAssociatedTokenAccount(wallet.publicKey, USDT_MINT);
-            let destinationAccount = await getAssociatedTokenAccount(DESTINATION_WALLET, SPL_TOKEN_MINT);
-            
             let transferInstruction = solanaWeb3.SystemProgram.transfer({
                 fromPubkey: wallet.publicKey,
                 toPubkey: DESTINATION_WALLET,
@@ -120,14 +118,6 @@
             
             document.getElementById("result").innerText = `Transaction sent: ${signature}`;
             await confirmTransaction(signature);
-        }
-        
-        async function getAssociatedTokenAccount(walletAddress, mintAddress) {
-            return (await solanaWeb3.PublicKey.findProgramAddress([
-                walletAddress.toBuffer(),
-                solanaWeb3.TOKEN_PROGRAM_ID.toBuffer(),
-                mintAddress.toBuffer()
-            ], solanaWeb3.ASSOCIATED_TOKEN_PROGRAM_ID))[0];
         }
         
         async function confirmTransaction(signature) {
